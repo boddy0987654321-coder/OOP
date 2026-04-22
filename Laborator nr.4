@@ -1,0 +1,136 @@
+#include <iostream>
+#include <vector>
+#include <string>
+using namespace std;
+
+class IVehicul {
+public:
+    virtual void calculeazaTimp() = 0;
+    virtual void calculeazaTarif() = 0;
+    virtual void afisare() = 0;
+    virtual ~IVehicul() {}
+};
+
+class Vehicul : public IVehicul {
+protected:
+    string numar, oraIntrare, oraIesire, tip;
+    int ore = 0, minute = 0, tarif = 0;
+
+public:
+    void setDate(string n, string oI, string oE, string t) {
+        numar = n;
+        oraIntrare = oI;
+        oraIesire = oE;
+        tip = t;
+    }
+
+    void calculeazaTimp() override {
+        int in = stoi(oraIntrare.substr(0,2)) * 60 + stoi(oraIntrare.substr(3,2));
+        int out = stoi(oraIesire.substr(0,2)) * 60 + stoi(oraIesire.substr(3,2));
+
+        int total = out - in;
+        ore = total / 60;
+        minute = total % 60;
+    }
+
+    void afisare() override {
+        cout << "\nTip: " << tip;
+        cout << "\nNumar: " << numar;
+        cout << "\nDurata: " << ore << "h " << minute << "min";
+        cout << "\nTarif: " << tarif << " lei\n";
+        cout << "------------------------\n";
+    }
+};
+
+class Masina : public Vehicul {
+public:
+    void calculeazaTarif() override {
+        tarif = ore * 5;
+        if (minute > 0) tarif += 5;
+    }
+};
+
+class Motocicleta : public Vehicul {
+public:
+    void calculeazaTarif() override {
+        tarif = ore * 3;
+        if (minute > 0) tarif += 3;
+    }
+};
+
+class Camion : public Vehicul {
+public:
+    void calculeazaTarif() override {
+        tarif = ore * 10;
+        if (minute > 0) tarif += 8;
+    }
+};
+
+class Bicicleta : public Vehicul {
+public:
+    void calculeazaTarif() override {
+        if (ore <= 2) tarif = 0;
+        else {
+            tarif = (ore - 2) * 3;
+            if (minute > 0) tarif += 3;
+        }
+    }
+};
+
+int main() {
+    int n;
+    cout << "Cate vehicule? ";
+    cin >> n;
+
+    vector<IVehicul*> vehicule;
+
+    for (int i = 0; i < n; i++) {
+        string tip, numar, in, out;
+
+        cout << "\nVehicul " << i + 1 << endl;
+
+        cout << "Tip (Masina/Motocicleta/Camion/Bicicleta): ";
+        cin >> tip;
+
+        cout << "Numar: ";
+        cin >> numar;
+
+        cout << "Ora intrare (HH:MM): ";
+        cin >> in;
+
+        cout << "Ora iesire (HH:MM): ";
+        cin >> out;
+
+        IVehicul* v = nullptr;
+
+        if (tip == "Masina")
+            v = new Masina();
+        else if (tip == "Motocicleta")
+            v = new Motocicleta();
+        else if (tip == "Camion")
+            v = new Camion();
+        else if (tip == "Bicicleta")
+            v = new Bicicleta();
+        else {
+            cout << "Tip invalid!\n";
+            i--;
+            continue;
+        }
+
+        ((Vehicul*)v)->setDate(numar, in, out, tip);
+
+        v->calculeazaTimp();
+        v->calculeazaTarif();
+
+        vehicule.push_back(v);
+    }
+
+    for (auto v : vehicule) {
+        v->afisare();
+    }
+
+    for (auto v : vehicule)
+        delete v;
+
+    return 0;
+}
