@@ -1,0 +1,489 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <ctime>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
+
+using namespace std;
+
+struct Mesaj {
+    string expeditorNume;
+    int expeditorID;
+    string continut;
+    string timestamp;
+    
+    Mesaj(string nume, int id, string text) {
+        expeditorNume = nume;
+        expeditorID = id;
+        continut = text;
+        
+        time_t now = time(0);
+        char* dt = ctime(&now);
+        timestamp = dt;
+        if (!timestamp.empty() && timestamp.back() == '\n') {
+            timestamp.pop_back();
+        }
+    }
+};
+
+struct Conversatie {
+    int idDestinatar;
+    string numeDestinatar;
+    vector<Mesaj> mesaje;
+    
+    Conversatie(int id, string nume) {
+        idDestinatar = id;
+        numeDestinatar = nume;
+    }
+    
+    void adaugaMesaj(const Mesaj& mesaj) {
+        mesaje.push_back(mesaj);
+    }
+    
+    void afiseazaMesaje() const {
+        if (mesaje.empty()) {
+            cout << "   Nu exista mesaje in aceasta conversatie.\n";
+            return;
+        }
+        
+        cout << "\n   === Conversatie cu " << numeDestinatar << " (ID: " << idDestinatar << ") ===\n";
+        for (const auto& mesaj : mesaje) {
+            cout << "   [" << mesaj.timestamp << "] ";
+            cout << mesaj.expeditorNume << ": " << mesaj.continut << endl;
+        }
+        cout << "   ==========================================\n";
+    }
+};
+
+class Utilizator {
+private:
+    int id;
+    string nume;
+    vector<Conversatie> conversatii;
+    
+public:
+    Utilizator(int idUtilizator, string numeUtilizator) {
+        id = idUtilizator;
+        nume = numeUtilizator;
+    }
+    
+    int getID() const { return id; }
+    string getNume() const { return nume; }
+    
+    Conversatie* gasesteConversatie(int idDestinatar) {
+        for (auto& conv : conversatii) {
+            if (conv.idDestinatar == idDestinatar) {
+                return &conv;
+            }
+        }
+        return nullptr;
+    }
+    
+    void creazaConversatie(int idDestinatar, string numeDestinatar) {
+        if (gasesteConversatie(idDestinatar) == nullptr) {
+            conversatii.push_back(Conversatie(idDestinatar, numeDestinatar));
+            cout << "   Conversatie creata cu " << numeDestinatar << ".\n";
+        } else {
+            cout << "   Conversatia exista deja.\n";
+        }
+    }
+    
+    void adaugaMesajInConversatie(int idDestinatar, string continutMesaj, string numeExpeditor, int idExpeditor) {
+        Conversatie* conv = gasesteConversatie(idDestinatar);
+        if (conv == nullptr) {
+            cout << "   Nu exista conversatie cu acest utilizator. Creati una mai intai.\n";
+            return;
+        }
+        
+        Mesaj nouMesaj(numeExpeditor, idExpeditor, continutMesaj);
+        conv->adaugaMesaj(nouMesaj);
+        cout << "   Mesaj trimis catre " << conv->numeDestinatar << ".\n";
+    }
+    
+    void vizualizeazaConversatie(int idDestinatar) const {
+        for (const auto& conv : conversatii) {
+            if (conv.idDestinatar == idDestinatar) {
+                conv.afiseazaMesaje();
+                return;
+            }
+        }
+        cout << "   Nu exista conversatie cu acest utilizator.\n";
+    }
+    
+    const vector<Conversatie>& getConversatii() const {
+        return conversatii;
+    }
+    
+    void afiseazaInfo() const {
+        cout << "ID: " << id << ", Nume: " << nume << ", Numar conversatii: " << conversatii.size() << endl;
+    }
+};
+
+class SistemChat {
+private:
+    vector<Utilizator*> utilizatori;
+    Utilizator* utilizatorCurent;
+    string numeFisier;
+    
+    Utilizator* gasesteUtilizatorByID(int id) {
+        for (auto* u : utilizatori) {
+            if (u->getID() == id) {
+                return u;
+            }
+        }
+        return nullptr;
+    }
+    
+    string escapeString(const string& str) const {
+        string rezultat;
+        for (char c : str) {
+            if (c == '\\') rezultat += "\\\\";
+            else if (c == '\n') rezultat += "\\n";
+            else if (c == '\r') rezultat += "\\r";
+            else if (c == '\t') rezultat += "\\t";
+            else rezultat += c;
+        }
+        return rezultat;
+    }
+    
+    string unescapeString(const string& str) const {
+        string rezultat;
+        for (size_t i = 0; i < str.length(); i++) {
+            if (str[i] == '\\' && i + 1 < str.length()) {
+                if (str[i + 1] == 'n') { rezultat += '\n'; i++; }
+                else if (str[i + 1] == 'r') { rezultat += '\r'; i++; }
+                else if (str[i + 1] == 't') { rezultat += '\t'; i++; }
+                else if (str[i + 1] == '\\') { rezultat += '\\'; i++; }
+                else rezultat += str[i];
+            } else {
+                rezultat += str[i];
+            }
+        }
+        return rezultat;
+    }
+    
+    void salveazaInFisier() {
+        ofstream file(numeFisier);
+        if (!file) {
+            cout << "   Eroare la deschiderea fisierului pentru scriere!\n";
+            return;
+        }
+        
+        for (auto* u : utilizatori) {
+            file << "USER:" << u->getID() << ":" << escapeString(u->getNume()) << "\n";
+            
+            for (const auto& conv : u->getConversatii()) {
+                file << "CONV:" << u->getID() << ":" << conv.idDestinatar << ":" << escapeString(conv.numeDestinatar) << "\n";
+                
+                for (const auto& mesaj : conv.mesaje) {
+                    file << "MSG:" << u->getID() << ":" << conv.idDestinatar << ":";
+                    file << mesaj.expeditorID << ":" << escapeString(mesaj.expeditorNume) << ":";
+                    file << escapeString(mesaj.continut) << ":" << escapeString(mesaj.timestamp) << "\n";
+                }
+            }
+        }
+        
+        file.close();
+    }
+    
+    void incarcaDinFisier() {
+        ifstream file(numeFisier);
+        if (!file) {
+            return;
+        }
+        
+        string line;
+        while (getline(file, line)) {
+            if (line.empty()) continue;
+            
+            if (line.find("USER:") == 0) {
+                size_t pos1 = 5;
+                size_t pos2 = line.find(':', pos1);
+                if (pos2 == string::npos) continue;
+                
+                int id = stoi(line.substr(pos1, pos2 - pos1));
+                string nume = unescapeString(line.substr(pos2 + 1));
+                
+                if (gasesteUtilizatorByID(id) == nullptr) {
+                    utilizatori.push_back(new Utilizator(id, nume));
+                }
+            }
+            else if (line.find("CONV:") == 0) {
+                size_t pos1 = 5;
+                size_t pos2 = line.find(':', pos1);
+                if (pos2 == string::npos) continue;
+                size_t pos3 = line.find(':', pos2 + 1);
+                if (pos3 == string::npos) continue;
+                
+                int idUtilizator = stoi(line.substr(pos1, pos2 - pos1));
+                int idDestinatar = stoi(line.substr(pos2 + 1, pos3 - pos2 - 1));
+                string numeDest = unescapeString(line.substr(pos3 + 1));
+                
+                Utilizator* u = gasesteUtilizatorByID(idUtilizator);
+                if (u != nullptr && u->gasesteConversatie(idDestinatar) == nullptr) {
+                    u->creazaConversatie(idDestinatar, numeDest);
+                }
+            }
+            else if (line.find("MSG:") == 0) {
+                size_t pos1 = 4;
+                size_t pos2 = line.find(':', pos1);
+                if (pos2 == string::npos) continue;
+                size_t pos3 = line.find(':', pos2 + 1);
+                if (pos3 == string::npos) continue;
+                size_t pos4 = line.find(':', pos3 + 1);
+                if (pos4 == string::npos) continue;
+                size_t pos5 = line.find(':', pos4 + 1);
+                if (pos5 == string::npos) continue;
+                size_t pos6 = line.find(':', pos5 + 1);
+                if (pos6 == string::npos) continue;
+                
+                int idUtilizator = stoi(line.substr(pos1, pos2 - pos1));
+                int idDestinatar = stoi(line.substr(pos2 + 1, pos3 - pos2 - 1));
+                int idExpeditor = stoi(line.substr(pos3 + 1, pos4 - pos3 - 1));
+                string numeExp = unescapeString(line.substr(pos4 + 1, pos5 - pos4 - 1));
+                string continut = unescapeString(line.substr(pos5 + 1, pos6 - pos5 - 1));
+                string timestamp = unescapeString(line.substr(pos6 + 1));
+                
+                Utilizator* u = gasesteUtilizatorByID(idUtilizator);
+                if (u != nullptr) {
+                    Mesaj mesaj(numeExp, idExpeditor, continut);
+                    mesaj.timestamp = timestamp;
+                    
+                    Conversatie* conv = u->gasesteConversatie(idDestinatar);
+                    if (conv != nullptr) {
+                        conv->adaugaMesaj(mesaj);
+                    }
+                }
+            }
+        }
+        
+        file.close();
+    }
+    
+public:
+    SistemChat() {
+        numeFisier = "utilizatori.txt";
+        utilizatorCurent = nullptr;
+        incarcaDinFisier();
+    }
+    
+    ~SistemChat() {
+        for (auto* u : utilizatori) {
+            delete u;
+        }
+        utilizatori.clear();
+    }
+    
+    void inregistrareUtilizator() {
+        int id;
+        string nume;
+        
+        cout << "\n--- INREGISTRARE UTILIZATOR ---\n";
+        cout << "Introduceti ID (numar intreg): ";
+        cin >> id;
+        cin.ignore();
+        
+        if (gasesteUtilizatorByID(id) != nullptr) {
+            cout << "   Eroare: ID-ul exista deja!\n";
+            return;
+        }
+        
+        cout << "Introduceti numele: ";
+        getline(cin, nume);
+        
+        if (nume.empty()) {
+            cout << "   Eroare: Numele nu poate fi gol!\n";
+            return;
+        }
+        
+        utilizatori.push_back(new Utilizator(id, nume));
+        salveazaInFisier();
+        cout << "   Cont creat cu succes!\n";
+    }
+    
+    void autentificareUtilizator() {
+        int id;
+        
+        cout << "\n--- AUTENTIFICARE ---\n";
+        cout << "Introduceti ID: ";
+        cin >> id;
+        
+        Utilizator* u = gasesteUtilizatorByID(id);
+        if (u == nullptr) {
+            cout << "   Eroare: ID invalid!\n";
+            return;
+        }
+        
+        utilizatorCurent = u;
+        cout << "   Bine ati venit, " << u->getNume() << "!\n";
+    }
+    
+    void creareConversatie() {
+        if (utilizatorCurent == nullptr) {
+            cout << "   Nu sunteti autentificat!\n";
+            return;
+        }
+        
+        int idDestinatar;
+        cout << "\n--- CREARE CONVERSATIE ---\n";
+        cout << "Introduceti ID-ul destinatarului: ";
+        cin >> idDestinatar;
+        
+        if (idDestinatar == utilizatorCurent->getID()) {
+            cout << "   Nu puteti crea conversatie cu voi insiva!\n";
+            return;
+        }
+        
+        Utilizator* destinatar = gasesteUtilizatorByID(idDestinatar);
+        if (destinatar == nullptr) {
+            cout << "   Eroare: Utilizatorul nu exista!\n";
+            return;
+        }
+        
+        utilizatorCurent->creazaConversatie(idDestinatar, destinatar->getNume());
+        destinatar->creazaConversatie(utilizatorCurent->getID(), utilizatorCurent->getNume());
+        
+        salveazaInFisier();
+    }
+    
+    void trimiteMesaj() {
+        if (utilizatorCurent == nullptr) {
+            cout << "   Nu sunteti autentificat!\n";
+            return;
+        }
+        
+        int idDestinatar;
+        string mesaj;
+        
+        cout << "\n--- TRIMITE MESAJ ---\n";
+        cout << "ID-ul destinatarului: ";
+        cin >> idDestinatar;
+        cin.ignore();
+        
+        if (idDestinatar == utilizatorCurent->getID()) {
+            cout << "   Nu puteti trimite mesaj voua insiva!\n";
+            return;
+        }
+        
+        Utilizator* destinatar = gasesteUtilizatorByID(idDestinatar);
+        if (destinatar == nullptr) {
+            cout << "   Eroare: Utilizatorul nu exista!\n";
+            return;
+        }
+        
+        cout << "Mesajul: ";
+        getline(cin, mesaj);
+        
+        if (mesaj.empty()) {
+            cout << "   Eroare: Mesajul nu poate fi gol!\n";
+            return;
+        }
+        
+        if (utilizatorCurent->gasesteConversatie(idDestinatar) == nullptr) {
+            cout << "   Nu exista conversatie. Creati una mai intai!\n";
+            return;
+        }
+        
+        utilizatorCurent->adaugaMesajInConversatie(idDestinatar, mesaj, utilizatorCurent->getNume(), utilizatorCurent->getID());
+        
+        if (destinatar->gasesteConversatie(utilizatorCurent->getID()) == nullptr) {
+            destinatar->creazaConversatie(utilizatorCurent->getID(), utilizatorCurent->getNume());
+        }
+        destinatar->adaugaMesajInConversatie(utilizatorCurent->getID(), mesaj, utilizatorCurent->getNume(), utilizatorCurent->getID());
+        
+        salveazaInFisier();
+    }
+    
+    void vizualizareConversatie() {
+        if (utilizatorCurent == nullptr) {
+            cout << "   Nu sunteti autentificat!\n";
+            return;
+        }
+        
+        int idDestinatar;
+        cout << "\n--- VIZUALIZARE CONVERSATIE ---\n";
+        cout << "ID-ul utilizatorului cu care doriti sa vedeti conversatia: ";
+        cin >> idDestinatar;
+        
+        utilizatorCurent->vizualizeazaConversatie(idDestinatar);
+    }
+    
+    void stergeCont() {
+        if (utilizatorCurent == nullptr) {
+            cout << "   Nu sunteti autentificat!\n";
+            return;
+        }
+        
+        char confirm;
+        cout << "\n--- STERGERE CONT ---\n";
+        cout << "Sunteti sigur ca doriti sa va stergeti contul? (d/n): ";
+        cin >> confirm;
+        
+        if (confirm != 'd' && confirm != 'D') {
+            cout << "   Operatie anulata.\n";
+            return;
+        }
+        
+        int idDeSters = utilizatorCurent->getID();
+        
+        auto it = find_if(utilizatori.begin(), utilizatori.end(),
+            [idDeSters](Utilizator* u) { return u->getID() == idDeSters; });
+        
+        if (it != utilizatori.end()) {
+            delete *it;
+            utilizatori.erase(it);
+        }
+        
+        utilizatorCurent = nullptr;
+        salveazaInFisier();
+        cout << "   Cont sters cu succes!\n";
+    }
+    
+    void meniuPrincipal() {
+        int optiune;
+        
+        do {
+            cout << "\n========== SISTEM CHAT ==========\n";
+            if (utilizatorCurent != nullptr) {
+                cout << "   Autentificat ca: " << utilizatorCurent->getNume() << " (ID: " << utilizatorCurent->getID() << ")\n";
+            } else {
+                cout << "   Nu sunteti autentificat\n";
+            }
+            cout << "==================================\n";
+            cout << "1. Inregistrare utilizator\n";
+            cout << "2. Autentificare\n";
+            cout << "3. Creare conversatie\n";
+            cout << "4. Trimite mesaj\n";
+            cout << "5. Vizualizare conversatie\n";
+            cout << "6. Stergere cont\n";
+            cout << "7. Iesire\n";
+            cout << "==================================\n";
+            cout << "Alegere: ";
+            cin >> optiune;
+            
+            switch (optiune) {
+                case 1: inregistrareUtilizator(); break;
+                case 2: autentificareUtilizator(); break;
+                case 3: creareConversatie(); break;
+                case 4: trimiteMesaj(); break;
+                case 5: vizualizareConversatie(); break;
+                case 6: stergeCont(); break;
+                case 7: cout << "La revedere!\n"; break;
+                default: cout << "Optiune invalida!\n";
+            }
+        } while (optiune != 7);
+    }
+    
+    void run() {
+        meniuPrincipal();
+    }
+};
+
+int main() {
+    SistemChat chat;
+    chat.run();
+    return 0;
+}
